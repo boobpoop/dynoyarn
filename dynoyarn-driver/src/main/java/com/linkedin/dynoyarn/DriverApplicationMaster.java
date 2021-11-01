@@ -132,8 +132,11 @@ public class DriverApplicationMaster {
     }
     requestMap = parseContainerRequests(dyarnConf);
     containerIdToComponentMap = new HashMap<>();
+    //总共的nodemanager数量
     totalNMs = dyarnConf.getInt(DynoYARNConfigurationKeys.NUM_NMS, 1);
+    //每个container里面nodemanager的数量
     nodeManagersPerContainer = dyarnConf.getInt(DynoYARNConfigurationKeys.NMS_PER_CONTAINER, 1);
+
     numTotalNodeManagerContainers = Utils.getNumNMContainerRequests(dyarnConf);
     assignedLeftovers = (totalNMs % nodeManagersPerContainer == 0);
     fs = FileSystem.get(dyarnConf);
@@ -144,12 +147,16 @@ public class DriverApplicationMaster {
 
   private boolean prepare() {
     LOG.info("Preparing application master..");
+    //监听container行为
     containerListener = createNMCallbackHandler();
+
+    //与nodemanager通信
     nmClientAsync = new NMClientAsyncImpl(containerListener);
     nmClientAsync.init(dyarnConf);
     nmClientAsync.start();
 
     // Init AMRMClient
+    //与resourcemanager通信
     AMRMClientAsync.AbstractCallbackHandler allocListener = new RMCallbackHandler();
     amRMClient = AMRMClientAsync.createAMRMClientAsync(1000, allocListener);
     amRMClient.init(dyarnConf);
@@ -305,15 +312,19 @@ public class DriverApplicationMaster {
 
   public static Map<DriverComponent, ContainerRequest> parseContainerRequests(Configuration conf) {
     Map<DriverComponent, ContainerRequest> containerRequests = new HashMap<>();
+    //dynoyarn.nodemanager.memory
     String nmMemoryString = conf.get(DynoYARNConfigurationKeys.NM_MEMORY, "2g");
     long nmMemory = Utils.parseMemoryString(nmMemoryString);
+    //dynoyarn.nodemanager.vcores
     int nmCores = conf.getInt(DynoYARNConfigurationKeys.NM_VCORES, 1);
-
+    //dynoyarn.resourcemanager.memory
     String rmMemoryString = conf.get(DynoYARNConfigurationKeys.RM_MEMORY, "4g");
     long rmMemory = Utils.parseMemoryString(rmMemoryString);
+    ////dynoyarn.resourcemanager.vcores
     int rmCores = conf.getInt(DynoYARNConfigurationKeys.RM_VCORES, 2);
     containerRequests.put(DriverComponent.NODE_MANAGER,
         new ContainerRequest(Utils.getNumNMContainerRequests(conf), nmMemory, nmCores, NM_PRIORITY));
+    //指定dynoyarn.resourcemanager.node-label
     containerRequests.put(DriverComponent.RESOURCE_MANAGER,
         new ContainerRequest(1, rmMemory, rmCores, RM_PRIORITY,
             conf.get(DynoYARNConfigurationKeys.RM_NODE_LABEL)));
@@ -373,6 +384,7 @@ public class DriverApplicationMaster {
   }
 
   private class RMCallbackHandler extends AMRMClientAsync.AbstractCallbackHandler {
+    //当Container结束时，统计总共成功退出的container和失败退出的container
     @Override
     public void onContainersCompleted(List<ContainerStatus> completedContainers) {
       LOG.info("Completed containers: " + completedContainers.size());
@@ -507,6 +519,7 @@ public class DriverApplicationMaster {
       int heapSize = (int) (memory * 0.9f);
       arguments.add("$JAVA_HOME/bin/java");
       arguments.add("-Xmx" + heapSize + "m");
+      //重新启动container，里面运行Mesher类
       arguments.add(Mesher.class.getName());
       arguments.add("--task_command");
       // Wrap full command in escaped double quotes (escaped because

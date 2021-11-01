@@ -21,8 +21,8 @@ buildscript {
 
 apply plugin: 'io.codearte.nexus-staging'
 
-def hadoopDriverVersion = "2.10.0"
-def hadoopVirtualVersion = "2.10.0"
+def hadoopDriverVersion = "3.3.0"
+def hadoopVirtualVersion = "3.3.0"
 ext.playVersion = "2.6.20"
 ext.scalaVersionFull = System.getProperty("scala.binary.version", "2.11.12")
 ext.scalaVersion = scalaVersionFull

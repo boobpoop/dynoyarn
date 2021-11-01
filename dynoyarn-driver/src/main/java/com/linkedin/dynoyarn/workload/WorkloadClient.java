@@ -258,6 +258,7 @@ public class WorkloadClient implements AutoCloseable {
     arguments.add("-D" + YarnConfiguration.YARN_APP_CONTAINER_LOG_DIR + "="
         + ApplicationConstants.LOG_DIR_EXPANSION_VAR);
     // Set class name
+    //启动WorkloadApplicationMaster
     arguments.add(WorkloadApplicationMaster.class.getName());
     arguments.add("-cluster_spec_location " + clusterSpecLocation);
     arguments.add("1>" + ApplicationConstants.LOG_DIR_EXPANSION_VAR + File.separatorChar + Constants.AM_STDOUT_FILENAME);

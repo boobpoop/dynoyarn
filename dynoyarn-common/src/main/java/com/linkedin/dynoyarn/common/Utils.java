@@ -175,6 +175,7 @@ public class Utils {
     File srcFile = new File(srcURI.getSchemeSpecificPart());
     Path dst = new Path(appResourcesPath, srcFile.getName());
 
+    //将文件上传到hdfs中
     try (OutputStream outputStream = fs.create(dst, true)) {
       if ("jar".equals(srcURI.getScheme())) {
         try (InputStream inputStream = new URL(localSrcPath).openStream()) {
@@ -186,6 +187,7 @@ public class Utils {
         }
       }
     }
+    //存储文件对应的hdfs路径，存储到LocalResource对象中，container启动时，会通过LocalResource中的hdfs文件路径下载指定文件
     fs.setPermission(dst, new FsPermission((short) 0770));
     FileStatus scFileStatus = fs.getFileStatus(dst);
     LocalResource scRsrc =

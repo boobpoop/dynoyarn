@@ -132,9 +132,11 @@ public class DriverClient implements AutoCloseable {
     LOG.info("Starting client..");
     // Upload dynoyarn jar.
     // dyarnJarPath = new File(DriverClient.class.getProtectionDomain().getCodeSource().getLocation().toURI()).getPath();
+    // 获取到MiniYARNCluster的Jar包，即hadoop-yarn-server-tests这个jar包
     dyarnJarPath = new File(MiniYARNCluster.class.getProtectionDomain().getCodeSource().getLocation().toURI()).getPath();
-
+    //创建能与resourcemanager通信的客户端
     yarnClient.start();
+    //RM创建逐步增加的appId，client通过这个appId提交app
     YarnClientApplication app = yarnClient.createApplication();
     ApplicationSubmissionContext appContext = app.getApplicationSubmissionContext();
     ApplicationId appId = appContext.getApplicationId();
@@ -142,12 +144,29 @@ public class DriverClient implements AutoCloseable {
     appContext.setResource(capability);
     ContainerLaunchContext amSpec = createAMContainerSpec(appId, Utils.getTokens(dyarnConf, yarnClient, true));
     appContext.setAMContainerSpec(amSpec);
+    // dynoyarn.driver.node-label,默认如下：
+    /**
+     * <property>
+     *     <name>dynoyarn.driver.node-label</name>
+     *     <value></value>
+     *     <description>Node label for simulated node manager containers.</description>
+     * </property>
+     */
     String nodeLabel = dyarnConf.get(DynoYARNConfigurationKeys.APPLICATION_NODE_LABEL);
     if (nodeLabel != null) {
       appContext.setNodeLabelExpression(nodeLabel);
     }
+    // dynoyarn.driver.queue,默认如下：
+    /**
+     *  <property>
+     *     <name>dynoyarn.driver.queue</name>
+     *     <value>default</value>
+     *     <description>Queue which the driver application is submitted to.</description>
+     *  </property>
+     */
     String queue = dyarnConf.get(DynoYARNConfigurationKeys.DRIVER_QUEUE);
     if (queue != null) {
+      //设置要提交的队列
       appContext.setQueue(queue);
     }
     appContext.setApplicationType("DYNOYARN");
@@ -175,13 +194,22 @@ public class DriverClient implements AutoCloseable {
     if (args.length == 0) {
       throw new IllegalArgumentException("No args specified for client to initialize");
     }
+    //在运行DriverClient时，用户指定了-hadoop_binary_path /hdfs/path/to/hadoop.tarball.tar.gz
+    //即hadoop的二进制zip包
     hadoopBinZipPath = cliParser.getOptionValue(HADOOP_BINARY_PATH_OPT);
+    //同时指定了-conf dynoyarn.xml
+    //即dynoyarn的配置
     confPath = cliParser.getOptionValue(CONF_OPT);
+    //同时指定了-capacity_scheduler_conf /hdfs/path/to/capacity-scheduler.xml
+    //即指定了capacity scheduler配置
     capacitySchedulerConfPath =
         cliParser.getOptionValue(CAPACITY_SCHEDULER_CONF_OPT, Constants.CAPACITY_SCHEDULER_XML);
     if (confPath != null) {
+      //加载dynoyarn.xml
       dyarnConf.addResource(new Path(confPath));
     }
+    //从core-site中读取df.defaultFs，即namenode地址
+    //创建客户端DistributedFileSystem对象，用来对hadoop文件系统进行读写操作
     fs = FileSystem.get(dyarnConf);
     createYarnClient();
     return true;
@@ -189,11 +217,15 @@ public class DriverClient implements AutoCloseable {
 
   private void createYarnClient() {
     if (System.getenv("HADOOP_CONF_DIR") != null) {
+      //加载HADOOP_CONF_DIR/core-site.xml
       dyarnConf.addResource(new Path(System.getenv(HADOOP_CONF_DIR) + File.separatorChar + CORE_SITE_CONF));
+      //加载HADOOP_CONF_DIR/hdfs-site.xml
       dyarnConf.addResource(new Path(System.getenv(HADOOP_CONF_DIR) + File.separatorChar + HDFS_SITE_CONF));
     }
+    //创建YarnClientImpl对象
     yarnClient = YarnClient.createYarnClient();
     LOG.info(dyarnConf);
+    //初始化Yarn客户端，创建timeline、history的client端信息
     yarnClient.init(dyarnConf);
   }
 
@@ -201,24 +233,32 @@ public class DriverClient implements AutoCloseable {
     ContainerLaunchContext amContainer = Records.newRecord(ContainerLaunchContext.class);
 
     Map<String, String> containerEnv = new HashMap<>();
+    //在hdfs中创建/user/${user.name}/appId路径
     appResourcesPath = Utils.constructAppResourcesPath(fs, appId.toString());
-
+    //hadoop二进制zip包的路径
     containerEnv.put(Constants.HADOOP_BIN_ZIP_NAME, hadoopBinZipPath);
 
     Map<String, LocalResource> localResources = new HashMap<>();
+    //hadoop-yarn-server-tests.jar包上传到hdfs中，并存储到LocalResource中
     Path dyarnJar = Utils.localizeLocalResource(dyarnConf, fs, dyarnJarPath, LocalResourceType.FILE, appResourcesPath, localResources);
+    //将dynoyarn.xml上传到hdfs中，并存储到LocalResource中
     Path conf = Utils.localizeLocalResource(dyarnConf, fs, confPath, LocalResourceType.FILE, appResourcesPath, localResources);
+    //将start-component.sh上传到hdfs中，并存储到LocalResource中
     Path startScript = Utils.localizeLocalResource(dyarnConf, fs, START_SCRIPT_LOCATION, LocalResourceType.FILE, appResourcesPath, localResources);
+    //将dynoyarn-container-executor.cfg上传到hdfs中，并存储到LocalResource中
     Path containerExecutorCfg = Utils.localizeLocalResource(dyarnConf, fs, CONTAINER_EXECUTOR_CFG, LocalResourceType.FILE, appResourcesPath, localResources);
+    //将dynoyarn-site.xml上传到hdfs中，并存储到LocalResource中
     Utils.localizeLocalResource(dyarnConf, fs, DYNOYARN_SITE_XML, LocalResourceType.FILE, appResourcesPath, localResources);
     containerEnv.put(Constants.DYARN_CONF_NAME, conf.toString());
     containerEnv.put(Constants.DYARN_JAR_NAME, dyarnJar.toString());
     containerEnv.put(Constants.DYARN_START_SCRIPT_NAME, startScript.toString());
     containerEnv.put(Constants.CAPACITY_SCHEDULER_NAME, capacitySchedulerConfPath);
     containerEnv.put(Constants.CONTAINER_EXECUTOR_CFG_NAME, containerExecutorCfg.toString());
+    //创建/user/${user}/appId/lib目录
     Path hdfsClasspath = new Path(appResourcesPath, "lib");
     fs.mkdirs(hdfsClasspath);
     FileSystem localFs = FileSystem.getLocal(dyarnConf);
+    //将当前目录下的lib下的文件上传到user/${user}/appId/lib目录下，这里lib目录应该存储的时hdfs的jar包，并存储到LocalResource中
     Path libPath = new Path("lib");
     if (localFs.exists(libPath)) {
       for (FileStatus status : localFs.listStatus(new Path("lib"))) {
@@ -226,8 +266,9 @@ public class DriverClient implements AutoCloseable {
             localResources);
       }
     }
+    //hdfs的classpath路径
     containerEnv.put("HDFS_CLASSPATH", hdfsClasspath.toString());
-
+    //将hdfs的share目录加入到classpath中
     StringBuilder classPathEnv = new StringBuilder(ApplicationConstants.Environment.CLASSPATH.$$())
         .append(ApplicationConstants.CLASS_PATH_SEPARATOR).append("./*");
     for (String c : dyarnConf.getStrings(
@@ -243,12 +284,14 @@ public class DriverClient implements AutoCloseable {
     acls.put(ApplicationAccessType.VIEW_APP, "*");
     acls.put(ApplicationAccessType.MODIFY_APP, " ");
     amContainer.setApplicationACLs(acls);
-
+    //构建指令：java -Xmx2g -Dyarn.app.container.log.dir="<LOG_DIR>" com.linkedin.dynoyarn.DriverApplicationMaster
+    // -conf dynoyarn.xml 1>${<LOG_DIR>}.amstdout.log 2>${<LOG_DIR>}.amstderr.log
     List<String> arguments = new ArrayList<>(30);
     arguments.add(ApplicationConstants.Environment.JAVA_HOME.$$() + "/bin/java");
     // Set Xmx based on am memory size
     arguments.add("-Xmx" + "2g");
     // Add configuration for log dir to retrieve log output from python subprocess in AM
+    // 日志位置
     arguments.add("-D" + YarnConfiguration.YARN_APP_CONTAINER_LOG_DIR + "="
         + ApplicationConstants.LOG_DIR_EXPANSION_VAR);
     // Set class name

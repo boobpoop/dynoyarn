@@ -19,7 +19,7 @@ echo "Heap size is $JAVA_HEAP_MAX"
 
 echo "PWD is: `pwd`"
 
-confDir=`pwd`/hadoop.zip/etc/hadoop
+
 umask 022
 baseDir="`pwd`/dyno-node"
 
@@ -45,6 +45,8 @@ if [[ $(ls $hadoopBinary/ | wc -l) = "1" ]]; then
 fi
 hadoopHome="`pwd`/$hadoopBinary"
 # Save real environment for later
+#confDir=`pwd`/hadoop.zip/etc/hadoop
+confDir=${hadoopHome}/etc/hadoop
 hadoopConfOriginal=${HADOOP_CONF_DIR:-$confDir}
 hadoopHomeOriginal=${HADOOP_HOME:-$hadoopHome}
 echo "Saving original HADOOP_HOME as: $hadoopHomeOriginal"
@@ -63,8 +65,8 @@ cp *.jar $extraClasspathDir
 
 # This is where libleveldbjni is written (per-NM). Write it to a larger partition
 # instead of /tmp
-tmpdir="/grid/a/tmp/hadoop-`whoami`"
-mkdir $tmpdir
+tmpdir="/tmp/a/tmp/hadoop-`whoami`"
+mkdir -p $tmpdir
 
 # Change environment variables for the Hadoop process
 export HADOOP_HOME="$hadoopHome"
@@ -145,9 +147,15 @@ EOF
 
 if [ "$component" = "NODE_MANAGER" ]; then
   HADOOP_LOG_DIR=$logDir HADOOP_CLIENT_OPTS=$HADOOP_CLIENT_OPTS $hadoopHome/bin/hadoop com.linkedin.dynoyarn.SimulatedNodeManagers $driverConfigs $nmCount
+  echo "HADOOP_LOG_DIR=$logDir HADOOP_CLIENT_OPTS=$HADOOP_CLIENT_OPTS $hadoopHome/bin/hadoop com.linkedin.dynoyarn.SimulatedNodeManagers $driverConfigs $nmCount"
   echo nodemanager
 elif [ "$component" = "RESOURCE_MANAGER" ]; then
-  HADOOP_PID_DIR=${pidDir} $hadoopHome/sbin/yarn-daemon.sh start resourcemanager $driverConfigs
+  #HADOOP_PID_DIR=${pidDir} $hadoopHome/sbin/yarn-daemon.sh start resourcemanager $driverConfigs
+  HADOOP_PID_DIR=${pidDir} /home/hadoop/hadoop/sbin/yarn-daemon.sh start resourcemanager $driverConfigs
+  echo ${pidDir}
+  echo ${hadoopHome}
+  echo $driverConfigs
+  echo "HADOOP_PID_DIR=${pidDir} $hadoopHome/sbin/yarn-daemon.sh start resourcemanager $driverConfigs"
   echo resourcemanager
 fi
 
